@@ -7,14 +7,10 @@ import json
 app = Flask(__name__)
 app.secret_key = 'brother_secret_key_change_this'
 
-# [오빠 비밀번호 설정] 패널 안에서 언제든 변경 가능합니다!
 ADMIN_PASSWORD = "1234" 
-
-# 데이터 저장을 위한 JSON 파일 경로
 DATA_FILE = "checklist_data.json"
 
 def load_data():
-    """서버에 저장된 체크리스트 기록을 불러옵니다."""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -24,23 +20,19 @@ def load_data():
     return {}
 
 def save_data(data):
-    """체크리스트 기록을 파일에 안전하게 저장합니다."""
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# 요일을 한글로 변환해 주는 헬퍼 함수
 def get_korean_weekday(date_obj):
     days = ['월', '화', '수', '목', '금', '토', '일']
     return days[date_obj.weekday()]
 
-# 1. 매일 해야 하는 일 목록
 DAILY_TASKS = [
     {"id": 1, "task": "목욕버튼 끄기"},
     {"id": 2, "task": "문쪽 튄 물 닦기"},
     {"id": 3, "task": "샴푸통 같은 거 쓰러진거 세우기"}
 ]
 
-# 2. 일요일 주간 청소 및 빨래 목록
 WEEKLY_TASKS = [
     {"id": 101, "task": "화장실 전체 청소 및 소독 (변기, 세면대, 바닥)"},
     {"id": 102, "task": "거울 물때 제거 및 배수구 머리카락 치우기"},
@@ -56,7 +48,6 @@ def index():
     date_obj = datetime.strptime(current_date, '%Y-%m-%d')
     is_sunday = (date_obj.weekday() == 6)
     
-    # 오늘 날짜에 한글 요일 표시용 문자열 생성 (예: 2026-10-02 (금))
     korean_weekday = get_korean_weekday(date_obj)
     display_date_str = f"{current_date} ({korean_weekday})"
     
@@ -236,7 +227,6 @@ def admin_panel():
                 "done": t_def['id'] in done_list
             })
 
-        # 어드민 로그에 한글 요일 표시 적용
         korean_wday = get_korean_weekday(target_date)
         display_log_str = f"{target_date.strftime('%m월 %d일')} ({korean_wday})"
 
@@ -261,7 +251,6 @@ def admin_logout():
     return redirect(url_for('index'))
 
 
-# 통합 스타일 및 템플릿
 NAV_STYLE = '''
     <div class="nav-bar">
         <a href="/" class="nav-btn {% if request.path == '/' %}active{% endif %}">📋 오늘의 체크리스트</a>
@@ -272,7 +261,8 @@ NAV_STYLE = '''
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f0f4f8; margin: 0; padding: 15px; color: #333; }
         .container { max-width: 650px; width: 100%; margin: auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); position: relative; }
         
-        .container-wide { max-width: 1400px; width: 96%; margin: auto; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); position: relative; }
+        /* 모바일과 PC 대응 반응형 컨테이너 */
+        .container-wide { max-width: 1400px; width: 100%; margin: auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); position: relative; }
 
         h1 { font-size: 1.5em; color: #2c3e50; text-align: center; margin-bottom: 10px; font-weight: 800; }
         h2 { font-size: 1.1em; color: #2c3e50; margin-bottom: 10px; font-weight: 700; }
@@ -298,25 +288,29 @@ NAV_STYLE = '''
         .weekly-title { color: #8b5cf6; }
         .task-text { font-size: 0.95em; font-weight: 500; word-break: keep-all; line-height: 1.4; color: #1e293b; }
         
-        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-weight: bold; font-size: 1.3em; color: #1e293b; }
-        .calendar-header a { text-decoration: none; background: #f1f5f9; padding: 8px 18px; border-radius: 8px; color: #475569; font-size: 0.85em; }
-        .cal-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .cal-table th { padding: 14px 0; font-size: 1em; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; }
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-weight: bold; font-size: 1.2em; color: #1e293b; }
+        .calendar-header a { text-decoration: none; background: #f1f5f9; padding: 8px 16px; border-radius: 8px; color: #475569; font-size: 0.85em; }
+        
+        /* 모바일에서 달력이 찌그러지지 않도록 가로 스크롤 영역 제공 */
+        .calendar-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 15px; }
+        
+        .cal-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 750px; }
+        .cal-table th { padding: 12px 0; font-size: 0.95em; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; }
         .cal-table th:first-child { color: #ef4444; } 
         .cal-table th:last-child { color: #3b82f6; }  
-        .cal-table td { height: 185px; border: 1px solid #e2e8f0; vertical-align: top; padding: 10px; text-align: left; background: #fff; overflow: hidden; transition: 0.15s; }
+        .cal-table td { height: 140px; border: 1px solid #e2e8f0; vertical-align: top; padding: 8px; text-align: left; background: #fff; transition: 0.15s; }
         .cal-table td:hover { background: #f1f5f9; }
         
-        .cal-day-num { font-size: 1em; font-weight: bold; display: inline-block; margin-bottom: 6px; padding: 2px 7px; border-radius: 4px; }
+        .cal-day-num { font-size: 0.9em; font-weight: bold; display: inline-block; margin-bottom: 4px; padding: 2px 6px; border-radius: 4px; }
         .cal-today { background: #eff6ff !important; border: 2px solid #3b82f6 !important; }
         
         .cal-done-cell { background: #ecfdf5 !important; border: 2px solid #10b981 !important; }
         .cal-missed-cell { background: #fef2f2 !important; border: 2px solid #ef4444 !important; }
 
-        .task-chip { background: #f1f5f9; font-size: 0.8em; padding: 4px 8px; border-radius: 6px; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; color: #334155; font-weight: 500; }
+        .task-chip { background: #f1f5f9; font-size: 0.72em; padding: 3px 6px; border-radius: 4px; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; color: #334155; font-weight: 500; }
         .task-chip.sunday-task { background: #f3e8ff; color: #7c3aed; }
         
-        .status-badge { font-size: 0.75em; padding: 5px 6px; border-radius: 6px; display: block; margin-top: 8px; font-weight: bold; text-align: center; width: 100%; }
+        .status-badge { font-size: 0.7em; padding: 3px 4px; border-radius: 4px; display: block; margin-top: 5px; font-weight: bold; text-align: center; width: 100%; }
         .badge-done { background: #10b981; color: white; }
         .badge-missed { background: #ef4444; color: white; }
         .badge-ongoing { background: #f59e0b; color: white; }
@@ -430,51 +424,53 @@ CALENDAR_TEMPLATE = '''
             <a href="/calendar?year={{ next_year }}&month={{ next_month }}">다음 ▶</a>
         </div>
 
-        <table class="cal-table">
-            <thead>
-                <tr>
-                    <th>일</th>
-                    <th>월</th>
-                    <th>화</th>
-                    <th>수</th>
-                    <th>목</th>
-                    <th>금</th>
-                    <th>토</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for week in calendar_matrix %}
-                <tr>
-                    {% for day_info in week %}
-                        {% if day_info is none %}
-                            <td style="background: #fafafa;"></td>
-                        {% else %}
-                            <td class="{% if day_info.is_today %}cal-today{% endif %} {% if day_info.is_completed %}cal-done-cell{% elif day_info.is_missed %}cal-missed-cell{% endif %}" onclick="location.href='/?date={{ day_info.date }}'" style="cursor: pointer;">
-                                <span class="cal-day-num" style="{% if day_info.is_sunday %}color: #ef4444;{% elif loop.last %}color: #3b82f6;{% endif %}">{{ day_info.day }}</span>
-                                
-                                <div style="margin-top: 5px;">
-                                    {% for task in day_info.tasks %}
-                                        <span class="task-chip {% if '화장실' in task or '거울' in task or '빨래' in task %}sunday-task{% endif %}" title="{{ task }}">· {{ task }}</span>
-                                    {% endfor %}
-                                </div>
+        <div class="calendar-wrapper">
+            <table class="cal-table">
+                <thead>
+                    <tr>
+                        <th>일</th>
+                        <th>월</th>
+                        <th>화</th>
+                        <th>수</th>
+                        <th>목</th>
+                        <th>금</th>
+                        <th>토</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for week in calendar_matrix %}
+                    <tr>
+                        {% for day_info in week %}
+                            {% if day_info is none %}
+                                <td style="background: #fafafa;"></td>
+                            {% else %}
+                                <td class="{% if day_info.is_today %}cal-today{% endif %} {% if day_info.is_completed %}cal-done-cell{% elif day_info.is_missed %}cal-missed-cell{% endif %}" onclick="location.href='/?date={{ day_info.date }}'" style="cursor: pointer;">
+                                    <span class="cal-day-num" style="{% if day_info.is_sunday %}color: #ef4444;{% elif loop.last %}color: #3b82f6;{% endif %}">{{ day_info.day }}</span>
+                                    
+                                    <div style="margin-top: 3px;">
+                                        {% for task in day_info.tasks %}
+                                            <span class="task-chip {% if '화장실' in task or '거울' in task or '빨래' in task %}sunday-task{% endif %}" title="{{ task }}">· {{ task }}</span>
+                                        {% endfor %}
+                                    </div>
 
-                                {% if day_info.total_count > 0 %}
-                                    {% if day_info.is_completed %}
-                                        <span class="status-badge badge-done">🟢 완료 ({{ day_info.done_count }}/{{ day_info.total_count }})</span>
-                                    {% elif day_info.is_missed %}
-                                        <span class="status-badge badge-missed">🔴 미완료 ({{ day_info.done_count }}/{{ day_info.total_count }})</span>
-                                    {% elif day_info.done_count > 0 %}
-                                        <span class="status-badge badge-ongoing">🟡 진행 ({{ day_info.done_count }}/{{ day_info.total_count }})</span>
+                                    {% if day_info.total_count > 0 %}
+                                        {% if day_info.is_completed %}
+                                            <span class="status-badge badge-done">🟢 완료 ({{ day_info.done_count }}/{{ day_info.total_count }})</span>
+                                        {% elif day_info.is_missed %}
+                                            <span class="status-badge badge-missed">🔴 미완료 ({{ day_info.done_count }}/{{ day_info.total_count }})</span>
+                                        {% elif day_info.done_count > 0 %}
+                                            <span class="status-badge badge-ongoing">🟡 진행 ({{ day_info.done_count }}/{{ day_info.total_count }})</span>
+                                        {% endif %}
                                     {% endif %}
-                                {% endif %}
-                            </td>
-                        {% endif %}
+                                </td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
                     {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <p style="font-size: 0.9em; color: #64748b; margin-top: 20px; text-align: center; font-weight: 500;">💡 날짜 칸을 누르면 해당 날짜의 체크리스트로 이동합니다.</p>
+                </tbody>
+            </table>
+        </div>
+        <p style="font-size: 0.85em; color: #64748b; margin-top: 15px; text-align: center; font-weight: 500;">💡 핸드폰에서는 표를 좌우로 살짝 밀어서(스크롤) 전체 요일을 보실 수 있습니다. 날짜 칸을 누르면 해당 날짜로 이동합니다!</p>
 
         ''' + SECRET_FOOTER_HTML + '''
     </div>
