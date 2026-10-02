@@ -7,7 +7,7 @@ import json
 app = Flask(__name__)
 app.secret_key = 'brother_secret_key_change_this'
 
-# [초기 오빠 비밀번호 설정] 패널 안에서 언제든 변경 가능합니다!
+# [오빠 비밀번호 설정] 패널 안에서 언제든 변경 가능합니다!
 ADMIN_PASSWORD = "1234" 
 
 # 데이터 저장을 위한 JSON 파일 경로
@@ -27,6 +27,11 @@ def save_data(data):
     """체크리스트 기록을 파일에 안전하게 저장합니다."""
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+
+# 요일을 한글로 변환해 주는 헬퍼 함수
+def get_korean_weekday(date_obj):
+    days = ['월', '화', '수', '목', '금', '토', '일']
+    return days[date_obj.weekday()]
 
 # 1. 매일 해야 하는 일 목록
 DAILY_TASKS = [
@@ -51,6 +56,10 @@ def index():
     date_obj = datetime.strptime(current_date, '%Y-%m-%d')
     is_sunday = (date_obj.weekday() == 6)
     
+    # 오늘 날짜에 한글 요일 표시용 문자열 생성 (예: 2026-10-02 (금))
+    korean_weekday = get_korean_weekday(date_obj)
+    display_date_str = f"{current_date} ({korean_weekday})"
+    
     checklist_status = load_data()
     completed_today = checklist_status.get(current_date, [])
     
@@ -59,6 +68,7 @@ def index():
                                   weekly_tasks=WEEKLY_TASKS,
                                   completed_today=completed_today,
                                   current_date=current_date,
+                                  display_date_str=display_date_str,
                                   today_str=today_str,
                                   is_sunday=is_sunday,
                                   is_today=is_today)
@@ -226,9 +236,13 @@ def admin_panel():
                 "done": t_def['id'] in done_list
             })
 
+        # 어드민 로그에 한글 요일 표시 적용
+        korean_wday = get_korean_weekday(target_date)
+        display_log_str = f"{target_date.strftime('%m월 %d일')} ({korean_wday})"
+
         history_logs.append({
             "date": date_str,
-            "display": target_date.strftime('%m월 %d일 (%a)'),
+            "display": display_log_str,
             "done_count": done_count,
             "total_count": total_count,
             "is_completed": is_completed,
@@ -258,7 +272,6 @@ NAV_STYLE = '''
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f0f4f8; margin: 0; padding: 15px; color: #333; }
         .container { max-width: 650px; width: 100%; margin: auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); position: relative; }
         
-        /* 캘린더 전용 와이드 컨테이너 (여백 최소화 & 화면 넓게 활용) */
         .container-wide { max-width: 1400px; width: 96%; margin: auto; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); position: relative; }
 
         h1 { font-size: 1.5em; color: #2c3e50; text-align: center; margin-bottom: 10px; font-weight: 800; }
@@ -285,7 +298,6 @@ NAV_STYLE = '''
         .weekly-title { color: #8b5cf6; }
         .task-text { font-size: 0.95em; font-weight: 500; word-break: keep-all; line-height: 1.4; color: #1e293b; }
         
-        /* 캘린더 스타일 대폭 확대 및 시원한 가독성 확보 */
         .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-weight: bold; font-size: 1.3em; color: #1e293b; }
         .calendar-header a { text-decoration: none; background: #f1f5f9; padding: 8px 18px; border-radius: 8px; color: #475569; font-size: 0.85em; }
         .cal-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -335,8 +347,8 @@ INDEX_TEMPLATE = '''
         <h1>✨ 채린이의 청소 홈</h1>
         
         <div class="date-selector">
-            <span style="font-weight: 700; font-size: 0.9em; color: #475569;">📅 오늘 날짜:</span>
-            <span style="font-size: 1em; font-weight: 800; color: #1e293b;">{{ current_date }}</span>
+            <span style="font-weight: 700; font-size: 0.9em; color: #475569;">📅 날짜:</span>
+            <span style="font-size: 1em; font-weight: 800; color: #1e293b;">{{ display_date_str }}</span>
             {% if not is_today %}
                 <a href="/" class="today-btn">오늘로 돌아가기</a>
             {% endif %}
