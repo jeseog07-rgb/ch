@@ -2,12 +2,31 @@ from flask import Flask, render_template_string, request, redirect, url_for, ses
 from datetime import datetime, timedelta
 import calendar
 import os
+import json
 
 app = Flask(__name__)
 app.secret_key = 'brother_secret_key_change_this'
 
 # [초기 오빠 비밀번호 설정] 패널 안에서 언제든 변경 가능합니다!
 ADMIN_PASSWORD = "1234" 
+
+# 데이터 저장을 위한 JSON 파일 경로
+DATA_FILE = "checklist_data.json"
+
+def load_data():
+    """서버에 저장된 체크리스트 기록을 불러옵니다."""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_data(data):
+    """체크리스트 기록을 파일에 안전하게 저장합니다."""
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 # 1. 매일 해야 하는 일 목록
 DAILY_TASKS = [
@@ -23,9 +42,6 @@ WEEKLY_TASKS = [
     {"id": 103, "task": "빨래 널기"}
 ]
 
-# 데이터 저장을 위한 임시 메모리 구조
-checklist_status = {}
-
 @app.route('/')
 def index():
     today_str = datetime.now().strftime('%Y-%m-%d')
@@ -35,6 +51,7 @@ def index():
     date_obj = datetime.strptime(current_date, '%Y-%m-%d')
     is_sunday = (date_obj.weekday() == 6)
     
+    checklist_status = load_data()
     completed_today = checklist_status.get(current_date, [])
     
     return render_template_string(INDEX_TEMPLATE, 
@@ -51,8 +68,10 @@ def toggle_task(task_id):
     today_str = datetime.now().strftime('%Y-%m-%d')
     date = request.form.get('date', today_str)
     
-    if date != today_str:
+    if not session.get('is_admin') and date != today_str:
         return redirect(url_for('index', date=today_str))
+
+    checklist_status = load_data()
 
     if date not in checklist_status:
         checklist_status[date] = []
@@ -61,6 +80,11 @@ def toggle_task(task_id):
         checklist_status[date].remove(task_id)
     else:
         checklist_status[date].append(task_id)
+        
+    save_data(checklist_status)
+    
+    if request.form.get('from_admin') == 'true':
+        return redirect(url_for('admin_panel'))
         
     return redirect(url_for('index', date=date))
 
@@ -86,6 +110,8 @@ def calendar_page():
     if next_month > 12:
         next_month = 1
         next_year += 1
+
+    checklist_status = load_data()
 
     calendar_matrix = []
     for week in month_days:
@@ -171,17 +197,20 @@ def admin_panel():
     history_logs = []
     total_completed_days = 0
     
+    checklist_status = load_data()
+
     for i in range(14):
         target_date = now - timedelta(days=i)
         date_str = target_date.strftime('%Y-%m-%d')
         is_sun = (target_date.weekday() == 6)
         
-        tasks_for_day = [t['task'] for t in DAILY_TASKS]
+        tasks_for_day_def = list(DAILY_TASKS)
         if is_sun:
-            tasks_for_day.extend([t['task'] for t in WEEKLY_TASKS])
+            tasks_for_day_def.extend(WEEKLY_TASKS)
             
-        total_count = len(tasks_for_day)
+        total_count = len(tasks_for_day_def)
         done_list = checklist_status.get(date_str, [])
+        
         valid_weekly_ids = {t['id'] for t in WEEKLY_TASKS}
         done_count = sum(1 for tid in done_list if is_sun or tid not in valid_weekly_ids)
         
@@ -190,11 +219,12 @@ def admin_panel():
             total_completed_days += 1
             
         task_details = []
-        for d_t in DAILY_TASKS:
-            task_details.append({"task": d_t['task'], "done": d_t['id'] in done_list})
-        if is_sun:
-            for w_t in WEEKLY_TASKS:
-                task_details.append({"task": w_t['task'], "done": w_t['id'] in done_list})
+        for t_def in tasks_for_day_def:
+            task_details.append({
+                "id": t_def['id'],
+                "task": t_def['task'],
+                "done": t_def['id'] in done_list
+            })
 
         history_logs.append({
             "date": date_str,
@@ -226,7 +256,11 @@ NAV_STYLE = '''
     <style>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f0f4f8; margin: 0; padding: 15px; color: #333; }
-        .container { max-width: 550px; width: 100%; margin: auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); position: relative; }
+        .container { max-width: 650px; width: 100%; margin: auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); position: relative; }
+        
+        /* 캘린더 전용 와이드 컨테이너 (여백 최소화 & 화면 넓게 활용) */
+        .container-wide { max-width: 1400px; width: 96%; margin: auto; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); position: relative; }
+
         h1 { font-size: 1.5em; color: #2c3e50; text-align: center; margin-bottom: 10px; font-weight: 800; }
         h2 { font-size: 1.1em; color: #2c3e50; margin-bottom: 10px; font-weight: 700; }
         
@@ -234,7 +268,6 @@ NAV_STYLE = '''
         .nav-btn { text-decoration: none; padding: 10px; border-radius: 8px; background: #eef2f7; color: #64748b; font-weight: bold; font-size: 0.9em; transition: 0.2s; flex: 1; text-align: center; }
         .nav-btn.active { background: #3b82f6; color: white; box-shadow: 0 2px 5px rgba(59,130,246,0.3); }
         
-        /* 중앙으로 이동한 날짜 선택기 컴팩트 스타일 */
         .date-selector { background: #f8fafc; padding: 10px 15px; border-radius: 10px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px solid #e2e8f0; }
         
         ul { list-style: none; padding: 0; margin: 0; }
@@ -252,31 +285,31 @@ NAV_STYLE = '''
         .weekly-title { color: #8b5cf6; }
         .task-text { font-size: 0.95em; font-weight: 500; word-break: keep-all; line-height: 1.4; color: #1e293b; }
         
-        /* 캘린더 스타일 */
-        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-weight: bold; font-size: 1.1em; color: #1e293b; }
-        .calendar-header a { text-decoration: none; background: #f1f5f9; padding: 6px 14px; border-radius: 8px; color: #475569; font-size: 0.85em; }
+        /* 캘린더 스타일 대폭 확대 및 시원한 가독성 확보 */
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-weight: bold; font-size: 1.3em; color: #1e293b; }
+        .calendar-header a { text-decoration: none; background: #f1f5f9; padding: 8px 18px; border-radius: 8px; color: #475569; font-size: 0.85em; }
         .cal-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .cal-table th { padding: 10px 0; font-size: 0.85em; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; }
+        .cal-table th { padding: 14px 0; font-size: 1em; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; }
         .cal-table th:first-child { color: #ef4444; } 
         .cal-table th:last-child { color: #3b82f6; }  
-        .cal-table td { height: 115px; border: 1px solid #e2e8f0; vertical-align: top; padding: 5px; text-align: left; background: #fff; overflow: hidden; transition: 0.15s; }
+        .cal-table td { height: 185px; border: 1px solid #e2e8f0; vertical-align: top; padding: 10px; text-align: left; background: #fff; overflow: hidden; transition: 0.15s; }
         .cal-table td:hover { background: #f1f5f9; }
         
-        .cal-day-num { font-size: 0.85em; font-weight: bold; display: inline-block; margin-bottom: 2px; padding: 1px 5px; border-radius: 4px; }
+        .cal-day-num { font-size: 1em; font-weight: bold; display: inline-block; margin-bottom: 6px; padding: 2px 7px; border-radius: 4px; }
         .cal-today { background: #eff6ff !important; border: 2px solid #3b82f6 !important; }
         
         .cal-done-cell { background: #ecfdf5 !important; border: 2px solid #10b981 !important; }
         .cal-missed-cell { background: #fef2f2 !important; border: 2px solid #ef4444 !important; }
 
-        .task-chip { background: #f1f5f9; font-size: 0.58em; padding: 2px 4px; border-radius: 4px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; color: #334155; }
+        .task-chip { background: #f1f5f9; font-size: 0.8em; padding: 4px 8px; border-radius: 6px; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; color: #334155; font-weight: 500; }
         .task-chip.sunday-task { background: #f3e8ff; color: #7c3aed; }
         
-        .status-badge { font-size: 0.6em; padding: 3px 4px; border-radius: 5px; display: block; margin-top: 4px; font-weight: bold; text-align: center; width: 100%; }
+        .status-badge { font-size: 0.75em; padding: 5px 6px; border-radius: 6px; display: block; margin-top: 8px; font-weight: bold; text-align: center; width: 100%; }
         .badge-done { background: #10b981; color: white; }
         .badge-missed { background: #ef4444; color: white; }
         .badge-ongoing { background: #f59e0b; color: white; }
 
-        .secret-footer { margin-top: 30px; text-align: center; font-size: 0.75em; border-top: 1px dashed #cbd5e1; padding-top: 15px; }
+        .secret-footer { margin-top: 30px; text-align: center; font-size: 0.8em; border-top: 1px dashed #cbd5e1; padding-top: 15px; }
         .secret-footer a { color: #94a3b8; text-decoration: none; font-weight: 500; }
         .secret-footer a:hover { color: #64748b; }
     </style>
@@ -301,7 +334,6 @@ INDEX_TEMPLATE = '''
     <div class="container">
         <h1>✨ 채린이의 청소 홈</h1>
         
-        <!-- 중앙으로 배치된 오늘 날짜 박스 -->
         <div class="date-selector">
             <span style="font-weight: 700; font-size: 0.9em; color: #475569;">📅 오늘 날짜:</span>
             <span style="font-size: 1em; font-weight: 800; color: #1e293b;">{{ current_date }}</span>
@@ -377,7 +409,7 @@ CALENDAR_TEMPLATE = '''
     ''' + NAV_STYLE + '''
 </head>
 <body>
-    <div class="container">
+    <div class="container-wide">
         <h1>🗓️ 월간 달력 현황</h1>
         
         <div class="calendar-header">
@@ -408,7 +440,7 @@ CALENDAR_TEMPLATE = '''
                             <td class="{% if day_info.is_today %}cal-today{% endif %} {% if day_info.is_completed %}cal-done-cell{% elif day_info.is_missed %}cal-missed-cell{% endif %}" onclick="location.href='/?date={{ day_info.date }}'" style="cursor: pointer;">
                                 <span class="cal-day-num" style="{% if day_info.is_sunday %}color: #ef4444;{% elif loop.last %}color: #3b82f6;{% endif %}">{{ day_info.day }}</span>
                                 
-                                <div style="margin-top: 2px;">
+                                <div style="margin-top: 5px;">
                                     {% for task in day_info.tasks %}
                                         <span class="task-chip {% if '화장실' in task or '거울' in task or '빨래' in task %}sunday-task{% endif %}" title="{{ task }}">· {{ task }}</span>
                                     {% endfor %}
@@ -416,11 +448,11 @@ CALENDAR_TEMPLATE = '''
 
                                 {% if day_info.total_count > 0 %}
                                     {% if day_info.is_completed %}
-                                        <span class="status-badge badge-done">🟢 완료({{ day_info.done_count }}/{{ day_info.total_count }})</span>
+                                        <span class="status-badge badge-done">🟢 완료 ({{ day_info.done_count }}/{{ day_info.total_count }})</span>
                                     {% elif day_info.is_missed %}
-                                        <span class="status-badge badge-missed">🔴 미완료({{ day_info.done_count }}/{{ day_info.total_count }})</span>
+                                        <span class="status-badge badge-missed">🔴 미완료 ({{ day_info.done_count }}/{{ day_info.total_count }})</span>
                                     {% elif day_info.done_count > 0 %}
-                                        <span class="status-badge badge-ongoing">🟡 진행({{ day_info.done_count }}/{{ day_info.total_count }})</span>
+                                        <span class="status-badge badge-ongoing">🟡 진행 ({{ day_info.done_count }}/{{ day_info.total_count }})</span>
                                     {% endif %}
                                 {% endif %}
                             </td>
@@ -430,7 +462,7 @@ CALENDAR_TEMPLATE = '''
                 {% endfor %}
             </tbody>
         </table>
-        <p style="font-size: 0.8em; color: #64748b; margin-top: 15px; text-align: center; font-weight: 500;">💡 날짜 칸을 누르면 해당 날짜의 체크리스트로 이동합니다.</p>
+        <p style="font-size: 0.9em; color: #64748b; margin-top: 20px; text-align: center; font-weight: 500;">💡 날짜 칸을 누르면 해당 날짜의 체크리스트로 이동합니다.</p>
 
         ''' + SECRET_FOOTER_HTML + '''
     </div>
@@ -504,7 +536,15 @@ ADMIN_PANEL_TEMPLATE = '''
 
         .log-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
         .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: bold; font-size: 0.95em; }
-        .task-row { font-size: 0.88em; padding: 4px 0; color: #475569; display: flex; align-items: center; gap: 8px; }
+        
+        .task-row { font-size: 0.88em; padding: 6px 0; color: #475569; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #f1f5f9; }
+        .task-row:last-child { border-bottom: none; }
+        
+        .admin-toggle-btn { background: #3b82f6; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 0.75em; font-weight: bold; cursor: pointer; }
+        .admin-toggle-btn:hover { background: #2563eb; }
+        .admin-toggle-btn.cancel { background: #64748b; }
+        .admin-toggle-btn.cancel:hover { background: #475569; }
+
         .badge-ok { background: #ecfdf5; color: #059669; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: 700; }
         .badge-no { background: #fef2f2; color: #dc2626; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: 700; }
     </style>
@@ -512,7 +552,7 @@ ADMIN_PANEL_TEMPLATE = '''
 <body>
     <div class="container">
         <div class="header">
-            <h1>🕵️‍♂️️ 오빠 전용 감시 패널</h1>
+            <h1>🕵️‍♂️ 오빠 전용 감시 패널</h1>
             <a href="/admin-logout" class="logout-btn">로그아웃</a>
         </div>
 
@@ -537,6 +577,7 @@ ADMIN_PANEL_TEMPLATE = '''
         </div>
 
         <div>
+            <h3 style="font-size: 1em; color: #1e293b; margin-bottom: 12px;">📅 날짜별 상세 기록 및 수정</h3>
             {% for log in history_logs %}
             <div class="log-card">
                 <div class="log-header">
@@ -550,8 +591,19 @@ ADMIN_PANEL_TEMPLATE = '''
                 <div>
                     {% for t in log.task_details %}
                     <div class="task-row">
-                        <span>{% if t.done %}✅{% else %}⬜{% endif %}</span>
-                        <span style="{% if t.done %}text-decoration: line-through; color: #94a3b8;{% else %}color: #334155;{% endif %}">{{ t.task }}</span>
+                        <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; padding-right: 8px;">
+                            <span>{% if t.done %}✅{% else %}⬜{% endif %}</span>
+                            <span style="{% if t.done %}text-decoration: line-through; color: #94a3b8;{% else %}color: #334155;{% endif %}">{{ t.task }}</span>
+                        </div>
+                        <form action="/toggle_task/{{ t.id }}" method="post" style="margin: 0;">
+                            <input type="hidden" name="date" value="{{ log.date }}">
+                            <input type="hidden" name="from_admin" value="true">
+                            {% if t.done %}
+                                <button type="submit" class="admin-toggle-btn cancel">취소</button>
+                            {% else %}
+                                <button type="submit" class="admin-toggle-btn">완료로 변경</button>
+                            {% endif %}
+                        </form>
                     </div>
                     {% endfor %}
                 </div>
